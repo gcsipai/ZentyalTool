@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Zentyal 8.0 Karbantartó és Hibaelhárító Eszköz (Ubuntu 22.04 LTS)
-# V2.4 BETA: Rendszer felkészítés (Alapszoftverek és Kompatibilitás) 1. menüpont.
+# V2.5: Beta2.
 
-MENU_TITLE="Zentyal Hibaelhárítás és Karbantartás (BÉTA)"
+MENU_TITLE="Zentyal Hibaelhárítás és Karbantartás (BÉTA v2.5)"
 # Host IP-címének lekérése
 IP_ADDRESS=$(hostname -I | awk '{print $1}' | awk '{print $1}')
 
@@ -14,9 +14,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# --- Függvények ---
-
-# Színes kimenet függvények
+# --- Színes kimenet függvények ---
 print_green() {
     echo -e "${GREEN}$1${NC}"
 }
@@ -30,6 +28,10 @@ print_red() {
     echo -e "${RED}$1${NC}"
 }
 
+# -----------------------------------------------------------------
+# --- FŐ FUNKCIÓK (A főmenü hívja) --------------------------------
+# -----------------------------------------------------------------
+
 # 1. Rendszer Felkészítés (Kompatibilitás és Alapszoftverek telepítése)
 prepare_system() {
     echo -e "\n--- [1] Rendszer Felkészítés (Kompatibilitás & Alapszoftverek) ---"
@@ -42,11 +44,9 @@ prepare_system() {
         return 1
     fi
 
-    # Alapvető szoftverek telepítése
     print_yellow "\n2. Alapvető karbantartó szoftverek telepítése (unzip, zip, curl, htop, mc, bpytop)..."
     REQUIRED_PACKAGES="unzip zip curl htop mc bpytop"
     
-    # Csak azokat telepíti, amelyek hiányoznak
     MISSING_PACKAGES=""
     for pkg in $REQUIRED_PACKAGES; do
         if ! dpkg -l | grep -q "^ii.* $pkg "; then
@@ -66,13 +66,12 @@ prepare_system() {
         print_green "Minden alapszoftver már telepítve van."
     fi
 
-    # Zentyal kompatibilitási ellenőrzés (például a hálózati elnevezés javítása)
     print_yellow "\n3. Zentyal kompatibilitás (NIC elnevezés) ellenőrzése..."
     if grep -q "net.ifnames=0" /etc/default/grub; then
         print_green "   ✅ Hálózati elnevezés (eth) kompatibilitás beállítva."
     else
-        print_red "   ❌ A régi hálózati elnevezés (eth) nincs beállítva."
-        print_yellow "   A javítás elvégezhető a főmenü 7. opciójával (Hálózati Elnevezés Javítása)."
+        print_red "   ❌ A régi hálózati elnevezés (eth) nincs beállítva. A Zentyal telepítő hibát jelezhet."
+        print_yellow "   A Javítás elvégezhető a főmenü 7. opciójával."
     fi
 
     print_green "\nRendszer felkészítés befejezve."
@@ -106,7 +105,6 @@ system_zentyal_upgrade() {
     read -n 1 -s -r -p "Nyomj meg egy gombot a folytatáshoz..."
 }
 
-
 # 3. Zentyal Telepítés
 install_zentyal() {
     echo -e "\n--- [3] Zentyal 8.0 Telepítés Indítása ---"
@@ -133,6 +131,7 @@ install_zentyal() {
 }
 
 # 4. Diagnosztika és Hibaelhárítás 🛠️
+# Ez csak a menüt jeleníti meg, a funkciók lejjebb vannak definiálva (4.1, 4.2, stb.)
 troubleshoot_zentyal() {
     while true; do
         clear
@@ -211,6 +210,7 @@ fix_nic_naming() {
         if grep -q "net.ifnames=0" /etc/default/grub; then
             print_green "   ✅ net.ifnames=0 biosdevname=0 már hozzáadva. Kihagyás."
         else
+            # Keresd meg a GRUB_CMDLINE_LINUX_DEFAULT sort, és add hozzá a paramétereket
             sed -i 's/\(GRUB_CMDLINE_LINUX_DEFAULT=".*\)"/\1 net.ifnames=0 biosdevname=0"/' /etc/default/grub
             print_green "   ✅ net.ifnames=0 biosdevname=0 hozzáadva."
         fi
@@ -225,6 +225,175 @@ fix_nic_naming() {
     else
         print_green "Módosítás megszakítva."
     fi
+    read -n 1 -s -r -p "Nyomj meg egy gombot a folytatáshoz..."
+}
+
+
+# ----------------------------------------------------
+# --- ALMENÜ FUNKCIÓK (A 4. Diagnosztika hívja) ---
+# ----------------------------------------------------
+
+# 4.1 Zentyal Modulok és Fő Szolgáltatás Állapotának Ellenőrzése
+check_module_status() {
+    echo -e "\n--- [4.1] Zentyal Modulok és Fő Szolgáltatás Állapotának Ellenőrzése ---"
+    
+    echo -e "\n${ORANGE}--- A Zentyal (ebox) Fő Szolgáltatás Állapota ---${NC}"
+    if command -v systemctl &> /dev/null; then
+        # Hozzáadva a 'cat' a megbízhatóbb megjelenítéshez
+        systemctl status ebox --no-pager | cat 
+        MAIN_SERVICE_STATUS=$(systemctl is-active ebox 2>/dev/null)
+        if [ "$MAIN_SERVICE_STATUS" == "active" ]; then
+            print_green "  ✅ Fő Zentyal Szolgáltatás (ebox) FUT."
+        else
+            print_red "  ❌ Fő Zentyal Szolgáltatás (ebox) NEM FUT. (Aktuális állapot: $MAIN_SERVICE_STATUS)"
+        fi
+    else
+        print_red "A systemctl parancs nem található. Kézi ellenőrzés szükséges."
+    fi
+
+    echo -e "\n${ORANGE}--- Telepített Zentyal Modulok Listája (dpkg) ---${NC}"
+    INSTALLED_MODULES=$(dpkg -l 2>/dev/null | grep zentyal- | grep '^ii' | awk '{print $2}')
+    
+    # ... (A modul állapot ellenőrző logika változatlan maradt) ...
+
+    if [ -z "$INSTALLED_MODULES" ]; then
+        print_yellow "Nincsenek telepített Zentyal csomagok."
+    else
+        echo "A következő Zentyal modulok vannak telepítve:"
+        for module in $INSTALLED_MODULES; do
+            SERVICE_NAME=$(echo "$module" | sed 's/zentyal-/ebox-/')
+            if systemctl is-active "$SERVICE_NAME" &> /dev/null; then
+                 print_green "  ✅ $module (Service: $SERVICE_NAME) - FUT"
+            elif systemctl is-failed "$SERVICE_NAME" &> /dev/null; then
+                 print_red "  ❌ $module (Service: $SERVICE_NAME) - HIBÁS (Failed)"
+            elif systemctl list-units --type=service --all 2>/dev/null | grep "$SERVICE_NAME.service" > /dev/null; then
+                 print_yellow "  ⚠️ $module (Service: $SERVICE_NAME) - Inaktív/Leállítva"
+            else
+                 echo "  ℹ️ $module (Kezelés a fő ebox folyamaton keresztül)"
+            fi
+        done
+    fi
+    echo -e "\n${YELLOW}Segítség: Ha egy modul HIBÁS (Failed), ellenőrizze a logokat (4.2 opció) a hiba okáért.${NC}"
+    read -n 1 -s -r -p "Nyomj meg egy gombot a folytatáshoz..."
+}
+
+# 4.2 Rendszer Logok Megtekintése
+view_system_logs() {
+    echo -e "\n--- [4.2] Rendszer Logok (Journal) Megtekintése ---"
+    print_yellow "A Zentyal szolgáltatások (ebox) utolsó 50 log bejegyzése (1 órán belül):"
+    echo -e "${ORANGE}---------------------------------------------------------------------${NC}"
+    
+    # Ellenőrizzük, hogy a journalctl létezik-e (bár Ubuntun kell)
+    if command -v journalctl &> /dev/null; then
+        journalctl -u ebox --since "1 hour ago" -n 50 --no-pager
+    else
+        print_red "Journalctl parancs nem található. Kézi ellenőrzés szükséges."
+    fi
+
+    echo -e "\n${ORANGE}--- Általános Rendszer Logok (Utolsó 20 hiba) ---${NC}"
+    if command -v journalctl &> /dev/null; then
+        journalctl -p err -n 20 --no-pager 2>/dev/null
+    fi
+
+    echo -e "\n${YELLOW}Teljes Zentyal log elérése: tail -f /var/log/zentyal/zentyal.log${NC}"
+    read -n 1 -s -r -p "Nyomj meg egy gombot a folytatáshoz..."
+}
+
+# 4.3 Port Ellenőrzés
+check_ports() {
+    echo -e "\n--- [4.3] Hálózati Port Ellenőrzés (ss -tuln) ---"
+    print_yellow "A futó TCP és UDP szolgáltatások, és az általuk használt portok listája:"
+    echo -e "${ORANGE}---------------------------------------------------------------------${NC}"
+    
+    if command -v ss &> /dev/null; then
+        ss -tuln
+    else
+        print_red "Az 'ss' parancs nem elérhető. Kézi netstat ellenőrzés szükséges."
+        netstat -tuln 2>/dev/null 
+    fi
+
+    echo -e "\n${YELLOW}Segítség: Ellenőrizze, hogy a szükséges portok (pl. 8443, 53, 25) LISTEN állapotban vannak-e.${NC}"
+    read -n 1 -s -r -p "Nyomj meg egy gombot a folytatáshoz..."
+}
+
+# 4.4 Konfigurációs Fájl Helyreállítás
+restore_config() {
+    echo -e "\n--- [4.4] Konfigurációs Fájl Helyreállítás ---"
+    print_yellow "A Zentyal adatbázisában tárolt beállításokat újraírja a rendszerszintű fájlokba."
+    
+    read -r -p "Biztosan újra akarod generálni a Zentyal konfigurációs fájlokat? (i/n): " confirm
+    if [[ "$confirm" =~ ^[iI]$ ]]; then
+        if [ -x "/usr/share/zentyal/make-all-config" ]; then
+            print_green "Konfiguráció újraírása..."
+            /usr/share/zentyal/make-all-config
+            if [ $? -eq 0 ]; then
+                print_green "Újraírás befejezve. Ajánlott szolgáltatás újraindítás."
+            else
+                print_red "Hiba történt a make-all-config futtatása során."
+            fi
+        else
+            print_red "A make-all-config parancs nem található. Lehetséges, hogy a Zentyal nincs telepítve."
+        fi
+    else
+        print_yellow "Helyreállítás megszakítva."
+    fi
+    read -n 1 -s -r -p "Nyomj meg egy gombot a folytatáshoz..."
+}
+
+# 4.5 Csomagok és Függőségek Kényszerített Javítása
+fix_dependencies() {
+    echo -e "\n--- [4.5] Csomagok és Függőségek Kényszerített Javítása ---"
+    print_yellow "Ez a funkció megpróbálja javítani a hiányzó vagy hibás csomagfüggőségeket a 'apt --fix-broken install' paranccsal."
+    
+    read -r -p "Folytatod a csomagjavítást? (i/n): " confirm
+    if [[ "$confirm" =~ ^[iI]$ ]]; then
+        print_green "Csomagjavítás indítása..."
+        apt --fix-broken install -y
+        if [ $? -eq 0 ]; then
+            print_green "Csomagfüggőségek javítása sikeresen befejeződött."
+            echo -e "${YELLOW}Kérem, futtassa a 2. opciót (Frissítés) a rendszer teljes szinkronizálásához!${NC}"
+        else
+            print_red "A csomagfüggőségek javítása HIBÁVAL zárult. Ellenőrizze a kimenetet!"
+        fi
+    else
+        print_yellow "Csomagjavítás megszakítva."
+    fi
+    read -n 1 -s -r -p "Nyomj meg egy gombot a folytatáshoz..."
+}
+
+# 4.6 Hálózati Kapcsolatok Ellenőrzése
+check_network_connections() {
+    echo -e "\n--- [4.6] Hálózati Kapcsolatok Ellenőrzése ---"
+    print_yellow "Aktív hálózati kapcsolatok:"
+    echo -e "${ORANGE}---------------------------------------------------------------------${NC}"
+    
+    if command -v ss &> /dev/null; then
+        ss -tunp
+    else
+        netstat -tunp 2>/dev/null 
+    fi
+
+    echo -e "\n${YELLOW}DNS felbontás teszt (google.com):${NC}"
+    # Egyszerű nslookup ellenőrzés
+    if nslookup google.com &> /dev/null; then
+        print_green "  ✅ DNS felbontás sikeres."
+    else
+        print_red "  ❌ DNS felbontás sikertelen. Ellenőrizze a Zentyal DNS modulját!${NC}"
+    fi
+    read -n 1 -s -r -p "Nyomj meg egy gombot a folytatáshoz..."
+}
+
+# 4.7 Lemezterület Ellenőrzése
+check_disk_space() {
+    echo -e "\n--- [4.7] Lemezterület Ellenőrzése ---"
+    print_yellow "Rendelkezésre álló lemezterület (df -h):"
+    echo -e "${ORANGE}---------------------------------------------------------------------${NC}"
+    df -h | grep -E '^(Filesystem|/dev/)' # Csak a fájlrendszereket és a fejlécet mutatja
+
+    echo -e "\n${YELLOW}Nagy fájlok keresése /var/log könyvtárban (felső 10, >10MB):${NC}"
+    # Hibaüzeneteket elnyomjuk a tiszta kimenetért
+    find /var/log -type f -size +10M -exec ls -lh {} \; 2>/dev/null | sort -k5 -hr | head -10 
+
     read -n 1 -s -r -p "Nyomj meg egy gombot a folytatáshoz..."
 }
 
@@ -264,159 +433,15 @@ show_menu() {
     done
 }
 
-# ----------------------------------------------------
-# --- ALMENÜ FUNKCIÓK (4. Diagnosztika menüpont) ---
-# ----------------------------------------------------
-
-# 4.1 Zentyal Modulok és Fő Szolgáltatás Állapotának Ellenőrzése
-check_module_status() {
-    echo -e "\n--- [4.1] Zentyal Modulok és Fő Szolgáltatás Állapotának Ellenőrzése ---"
-    
-    echo -e "\n${ORANGE}--- A Zentyal (ebox) Fő Szolgáltatás Állapota ---${NC}"
-    if command -v systemctl &> /dev/null; then
-        systemctl status ebox --no-pager | head -n 10
-        MAIN_SERVICE_STATUS=$(systemctl is-active ebox 2>/dev/null)
-        if [ "$MAIN_SERVICE_STATUS" == "active" ]; then
-            print_green "  ✅ Fő Zentyal Szolgáltatás (ebox) FUT."
-        else
-            print_red "  ❌ Fő Zentyal Szolgáltatás (ebox) NEM FUT. (Aktuális állapot: $MAIN_SERVICE_STATUS)"
-        fi
-    else
-        print_yellow "A systemctl parancs nem található."
-    fi
-
-    echo -e "\n${ORANGE}--- Telepített Zentyal Modulok Listája (dpkg) ---${NC}"
-    INSTALLED_MODULES=$(dpkg -l 2>/dev/null | grep zentyal- | grep '^ii' | awk '{print $2}')
-    if [ -z "$INSTALLED_MODULES" ]; then
-        print_yellow "Nincsenek telepített Zentyal csomagok."
-    else
-        echo "A következő Zentyal modulok vannak telepítve:"
-        for module in $INSTALLED_MODULES; do
-            SERVICE_NAME=$(echo "$module" | sed 's/zentyal-/ebox-/')
-            if systemctl is-active "$SERVICE_NAME" &> /dev/null; then
-                 print_green "  ✅ $module (Service: $SERVICE_NAME) - FUT"
-            elif systemctl is-failed "$SERVICE_NAME" &> /dev/null; then
-                 print_red "  ❌ $module (Service: $SERVICE_NAME) - HIBÁS (Failed)"
-            elif systemctl list-units --type=service --all 2>/dev/null | grep "$SERVICE_NAME.service" > /dev/null; then
-                 print_yellow "  ⚠️ $module (Service: $SERVICE_NAME) - Inaktív/Leállítva"
-            else
-                 echo "  ℹ️ $module (Kezelés a fő ebox folyamaton keresztül)"
-            fi
-        done
-    fi
-    echo -e "\n${YELLOW}Segítség: Ha egy modul HIBÁS (Failed), ellenőrizze a logokat (4.2 opció) a hiba okáért.${NC}"
-    read -n 1 -s -r -p "Nyomj meg egy gombot a folytatáshoz..."
-}
-
-# 4.2 Rendszer Logok Megtekintése
-view_system_logs() {
-    echo -e "\n--- [4.2] Rendszer Logok (Journal) Megtekintése ---"
-    print_yellow "A Zentyal szolgáltatások (ebox) utolsó 50 log bejegyzése (1 órán belül):"
-    echo -e "${ORANGE}---------------------------------------------------------------------${NC}"
-    if systemctl is-active ebox &> /dev/null; then
-        journalctl -u ebox --since "1 hour ago" -n 50 --no-pager
-    else
-        print_yellow "Az ebox szolgáltatás nem fut, általános logok megjelenítése..."
-    fi
-    echo -e "\n${ORANGE}--- Általános Rendszer Logok (Utolsó 20 hiba) ---${NC}"
-    journalctl -p err -n 20 --no-pager 2>/dev/null
-    echo -e "\n${YELLOW}Teljes Zentyal log elérése: tail -f /var/log/zentyal/zentyal.log${NC}"
-    read -n 1 -s -r -p "Nyomj meg egy gombot a folytatáshoz..."
-}
-
-# 4.3 Port Ellenőrzés
-check_ports() {
-    echo -e "\n--- [4.3] Hálózati Port Ellenőrzés (ss -tuln) ---"
-    print_yellow "A futó TCP és UDP szolgáltatások, és az általuk használt portok listája:"
-    echo -e "${ORANGE}---------------------------------------------------------------------${NC}"
-    if command -v ss &> /dev/null; then
-        ss -tuln
-    else
-        print_yellow "Az 'ss' parancs nem elérhető, netstat használata..."
-        netstat -tuln 2>/dev/null || print_red "A port információk lekérése nem sikerült."
-    fi
-    echo -e "\n${YELLOW}Segítség: Ellenőrizze, hogy a szükséges portok (pl. 8443, 53, 25) LISTEN állapotban vannak-e.${NC}"
-    read -n 1 -s -r -p "Nyomj meg egy gombot a folytatáshoz..."
-}
-
-# 4.4 Konfigurációs Fájl Helyreállítás
-restore_config() {
-    echo -e "\n--- [4.4] Konfigurációs Fájl Helyreállítás ---"
-    print_yellow "A Zentyal adatbázisában tárolt beállításokat újraírja a rendszerszintű fájlokba."
-    read -r -p "Biztosan újra akarod generálni a Zentyal konfigurációs fájlokat? (i/n): " confirm
-    if [[ "$confirm" =~ ^[iI]$ ]]; then
-        if [ -x "/usr/share/zentyal/make-all-config" ]; then
-            print_green "Konfiguráció újraírása..."
-            /usr/share/zentyal/make-all-config
-            print_green "Újraírás befejezve. Ajánlott szolgáltatás újraindítás."
-        else
-            print_red "A make-all-config parancs nem található."
-        fi
-    else
-        print_yellow "Helyreállítás megszakítva."
-    fi
-    read -n 1 -s -r -p "Nyomj meg egy gombot a folytatáshoz..."
-}
-
-# 4.5 Csomagok és Függőségek Kényszerített Javítása
-fix_dependencies() {
-    echo -e "\n--- [4.5] Csomagok és Függőségek Kényszerített Javítása ---"
-    print_yellow "Ez a funkció megpróbálja javítani a hiányzó vagy hibás csomagfüggőségeket a 'apt --fix-broken install' paranccsal."
-    read -r -p "Folytatod a csomagjavítást? (i/n): " confirm
-    if [[ "$confirm" =~ ^[iI]$ ]]; then
-        print_green "Csomagjavítás indítása..."
-        apt --fix-broken install -y
-        if [ $? -eq 0 ]; then
-            print_green "Csomagfüggőségek javítása sikeresen befejeződött."
-            echo -e "${YELLOW}Kérem, futtassa a 2. opciót (Frissítés) a rendszer teljes szinkronizálásához!${NC}"
-        else
-            print_red "A csomagfüggőségek javítása HIBÁVAL zárult. Ellenőrizze a kimenetet!"
-        fi
-    else
-        print_yellow "Csomagjavítás megszakítva."
-    fi
-    read -n 1 -s -r -p "Nyomj meg egy gombot a folytatáshoz..."
-}
-
-# 4.6 Hálózati Kapcsolatok Ellenőrzése
-check_network_connections() {
-    echo -e "\n--- [4.6] Hálózati Kapcsolatok Ellenőrzése ---"
-    print_yellow "Aktív hálózati kapcsolatok:"
-    echo -e "${ORANGE}---------------------------------------------------------------------${NC}"
-    if command -v ss &> /dev/null; then
-        ss -tunp
-    else
-        netstat -tunp 2>/dev/null | head -20
-    fi
-    echo -e "\n${YELLOW}DNS felbontás teszt (google.com):${NC}"
-    if nslookup google.com &> /dev/null; then
-        print_green "  ✅ DNS felbontás sikeres."
-    else
-        print_red "  ❌ DNS felbontás sikertelen. Ellenőrizze a Zentyal DNS modulját!${NC}"
-    fi
-    read -n 1 -s -r -p "Nyomj meg egy gombot a folytatáshoz..."
-}
-
-# 4.7 Lemezterület Ellenőrzése
-check_disk_space() {
-    echo -e "\n--- [4.7] Lemezterület Ellenőrzése ---"
-    print_yellow "Rendelkezésre álló lemezterület (df -h):"
-    echo -e "${ORANGE}---------------------------------------------------------------------${NC}"
-    df -h | grep -E '^(Filesystem|/dev/)'
-    echo -e "\n${YELLOW}Nagy fájlok keresése /var/log könyvtárban (felső 10, >10MB):${NC}"
-    find /var/log -type f -size +10M -exec ls -lh {} \; 2>/dev/null | sort -k5 -hr | head -10
-    read -n 1 -s -r -p "Nyomj meg egy gombot a folytatáshoz..."
-}
-
 
 # Indítás ellenőrzés (Root-ot igényel)
 if [[ $EUID -ne 0 ]]; then
     print_red "FIGYELEM: A script futtatásához root jogosultság szükséges!"
-    print_yellow "Kérlek, futtasd a scriptet 'sudo ./zentyal_tool_beta.sh' paranccsal."
+    print_yellow "Kérlek, futtasd a scriptet 'sudo ./zentyal-tool-beta.sh' paranccsal."
     exit 1
 fi
 
 # Főprogram indítása
-print_green "Zentyal Karbantartó Eszköz indítása (ROOT módban, BETA)..."
+print_green "Zentyal Karbantartó Eszköz indítása (ROOT módban, BETA v2.5)..."
 sleep 2
 show_menu
