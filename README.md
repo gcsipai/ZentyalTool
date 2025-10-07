@@ -22,17 +22,17 @@ Az eszköz futtatásához root (rendszergazdai) jogosultság szükséges.
 
 1.  **A script letöltése:**
     ```bash
-    wget [A script GitHub/GitLab linkje ide] -O zentyal_tool_beta.sh
+    wget [A script GitHub/GitLab linkje ide] -O zentyal-tool-beta.sh
     ```
 
 2.  **Futtatási jog adása:**
     ```bash
-    chmod +x zentyal_tool_beta.sh
+    chmod +x zentyal-tool-beta.sh
     ```
 
 3.  **Futtatás root jogosultsággal:**
     ```bash
-    sudo ./zentyal_tool_beta.sh
+    sudo ./zentyal-tool-beta.sh
     ```
 
 ## 🌐 Főmenü Opciók Részletesen
